@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Transaction } from '../types';
 import * as db from '../services/databaseService';
 
+// Tus categorías de ayer:
 const BUDGET_CATEGORIES = ['Vivienda', 'Comida', 'Transporte', 'Servicios', 'Entretenimiento', 'Salud', 'Ahorro'];
-const SAVINGS_TYPES = ['RETIRO', 'CONTINGENCIAS', 'VIVIENDA', 'TRANSPORTE', 'TECNOLOGÍA', 'VIAJES', 'INVERSIONES', 'OTROS'];
+const SAVINGS_TYPES = ['Fondo de Emergencia', 'Retiro', 'Viajes/Gustos'];
 
 interface AddTransactionScreenProps {
     onSubmit: (transaction: any) => void;
@@ -50,33 +51,33 @@ const AddTransactionScreen: React.FC<AddTransactionScreenProps> = ({ onSubmit, e
 
     return (
         <div className="fixed inset-0 bg-white dark:bg-gray-900 z-50 p-6 overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex justify-between items-center mb-6 text-gray-800 dark:text-white">
                 <h1 className="text-2xl font-bold">{editingTransaction ? 'Editar' : 'Nuevo'}</h1>
                 <button onClick={onClose} className="p-2">✕</button>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
-                    <button type="button" onClick={() => setTransactionMode('expense')} className={`flex-1 py-2 rounded ${transactionMode === 'expense' ? 'bg-white shadow' : ''}`}>GASTO</button>
-                    <button type="button" onClick={() => setTransactionMode('saving')} className={`flex-1 py-2 rounded ${transactionMode === 'saving' ? 'bg-white shadow' : ''}`}>AHORRO</button>
+                <div className="flex gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+                    <button type="button" onClick={() => setTransactionMode('expense')} className={`flex-1 py-2 rounded font-bold ${transactionMode === 'expense' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}>GASTO</button>
+                    <button type="button" onClick={() => setTransactionMode('saving')} className={`flex-1 py-2 rounded font-bold ${transactionMode === 'saving' ? 'bg-white shadow text-teal-600' : 'text-gray-500'}`}>AHORRO</button>
                 </div>
 
-                <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="w-full text-3xl font-bold border-b py-2 outline-none" required />
+                <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="w-full text-3xl font-bold border-b py-2 outline-none dark:bg-transparent dark:text-white" required />
                 
-                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full p-3 bg-gray-50 rounded-lg" />
+                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full p-3 bg-gray-50 dark:bg-gray-800 rounded-lg dark:text-white" />
 
                 {transactionMode === 'expense' && (
                     <>
-                        <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg">
-                            <input type="checkbox" checked={isPaidFromSavings} onChange={(e) => setIsPaidFromSavings(e.target.checked)} />
-                            <label className="text-sm">Pagar desde Ahorros</label>
+                        <div className="flex items-center gap-2 p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg">
+                            <input type="checkbox" checked={isPaidFromSavings} onChange={(e) => setIsPaidFromSavings(e.target.checked)} className="w-4 h-4" />
+                            <label className="text-sm dark:text-indigo-200">Pagar desde Ahorros</label>
                         </div>
                         {isPaidFromSavings ? (
-                            <select value={savingsGoalSource} onChange={(e) => setSavingsGoalSource(e.target.value)} className="w-full p-3 bg-gray-50 rounded-lg">
+                            <select value={savingsGoalSource} onChange={(e) => setSavingsGoalSource(e.target.value)} className="w-full p-3 bg-gray-50 dark:bg-gray-800 rounded-lg dark:text-white">
                                 {SAVINGS_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
                             </select>
                         ) : (
-                            <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full p-3 bg-gray-50 rounded-lg">
+                            <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full p-3 bg-gray-50 dark:bg-gray-800 rounded-lg dark:text-white">
                                 {BUDGET_CATEGORIES.filter(c => c !== 'Ahorro').map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                         )}

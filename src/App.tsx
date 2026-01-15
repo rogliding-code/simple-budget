@@ -1,123 +1,199 @@
-import React, { useState, useEffect } from 'react';
-import { SettingsProvider } from './contexts/SettingsContext';
-import * as db from './services/databaseService';
-import { Transaction, BudgetGoal } from './types';
 
-// Componentes
+import React, { useState, useEffect, useCallback, useContext } from 'react';
+import { Transaction, BudgetGoal, View, SavingsDistribution } from './types';
+import * as db from './services/databaseService';
 import Header from './components/Header';
-import BottomNav from './components/BottomNav';
-import LandingPage from './components/LandingPage';
+import DeletionAlert from './components/DeletionAlert';
+import SettingsScreen from './components/SettingsScreen';
 import DashboardScreen from './components/DashboardScreen';
 import BudgetScreen from './components/BudgetScreen';
-import HistoryScreen from './components/HistoryScreen';
 import AddTransactionScreen from './components/AddTransactionScreen';
+import HistoryScreen from './components/HistoryScreen';
 import SavingsScreen from './components/SavingsScreen';
+import BottomNav from './components/BottomNav';
+import LandingPage from './components/LandingPage';
+import { SettingsContext } from './contexts/SettingsContext';
 
-// Contenedor principal para usar el contexto
-const MainApp = () => {
-  // Estado de Acceso (Landing vs App)
-  const [hasAccess, setHasAccess] = useState(() => {
-    return localStorage.getItem('simpleBudgetHasAccess') === 'true';
-  });
+const App: React.FC = () => {
+    const [transactions, setTransactions] = useState<Transaction[]>([]);
+    const [goals, setGoals] = useState<BudgetGoal[]>([]);
+    const [savingsDistribution, setSavingsDistribution] = useState<SavingsDistribution[]>([]);
+    const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+    const [showDeletionAlert, setShowDeletionAlert] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const [view, setView] = useState<View>('dashboard');
+    const [showSavings, setShowSavings] = useState(false);
+    const { isDarkMode } = useContext(SettingsContext);
 
-  // Navegación
-  const [currentView, setCurrentView] = useState<'dashboard' | 'budget' | 'history'>('dashboard');
-  const [showAddTransaction, setShowAddTransaction] = useState(false);
-  const [showSavingsModal, setShowSavingsModal] = useState(false);
-  
-  // Datos Globales
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [goals, setGoals] = useState<BudgetGoal[]>([]);
-  const [savingsDist, setSavingsDist] = useState<any[]>([]); 
+    const [isUnlocked, setIsUnlocked] = useState(false);
+    const [isAuthLoading, setIsAuthLoading] = useState(true);
 
-  useEffect(() => {
-    if (hasAccess) {
-      loadGlobalData();
+    const refreshData = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const [fetchedTransactions, fetchedGoals, fetchedDistribution] = await Promise.all([
+                db.getAllTransactions(),
+                db.getAllGoals(),
+                db.getSavingsDistribution(),
+            ]);
+            setTransactions(fetchedTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+            setGoals(fetchedGoals);
+            setSavingsDistribution(fetchedDistribution);
+        } catch (error) {
+            console.error("Error refreshing data:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
+
+    // Check for access on initial load
+    useEffect(() => {
+        const checkAccess = () => {
+            try {
+                if (localStorage.getItem('app_unlocked') === 'true') {
+                    setIsUnlocked(true);
+                }
+            } catch (e) {
+                console.error("Could not access localStorage", e);
+            } finally {
+                setIsAuthLoading(false);
+            }
+        };
+        checkAccess();
+    }, []);
+
+    // Initialize DB and load data only after access is granted
+    useEffect(() => {
+        if (!isUnlocked) return;
+
+        const initializeApp = async () => {
+            await db.initDB();
+            const deletedCount = await db.deleteOldTransactions();
+            if (deletedCount > 0) {
+                console.log(`Successfully deleted ${deletedCount} old transaction(s).`);
+            }
+            const needsAlert = await db.checkDeletionAlert();
+            setShowDeletionAlert(needsAlert);
+            await refreshData();
+        };
+
+        initializeApp();
+    }, [isUnlocked, refreshData]);
+
+    const handleEnterApp = () => {
+        try {
+            localStorage.setItem('app_unlocked', 'true');
+        } catch(e) {
+            console.error("Could not save to localStorage", e);
+        }
+        setIsUnlocked(true);
+    };
+
+    const handleAddOrUpdateTransaction = async (transaction: Omit<Transaction, 'id'> | Transaction) => {
+        if ('id' in transaction && transaction.id) {
+            await db.updateTransaction(transaction);
+        } else {
+            await db.addTransaction(transaction as Omit<Transaction, 'id'>);
+        }
+        setEditingTransaction(null);
+        setView('dashboard');
+        await refreshData();
+    };
+
+    const handleDeleteTransaction = async (id: number) => {
+        await db.deleteTransaction(id);
+        await refreshData();
+    };
+    
+    const handleEditTransaction = (transaction: Transaction) => {
+        setEditingTransaction(transaction);
+        setView('addTransaction');
+    };
+    
+    const handleBatchUpdateGoals = async (updatedGoals: BudgetGoal[]) => {
+        await Promise.all(updatedGoals.map(goal => db.updateGoal(goal)));
+        await refreshData();
+    };
+
+    const handleSaveDistribution = async (distribution: SavingsDistribution[]) => {
+        await db.saveSavingsDistribution(distribution);
+        await refreshData();
+    };
+
+    const renderMainView = () => {
+        if (isLoading) {
+            return (
+                 <div className="flex justify-center items-center h-full pt-16">
+                    <p className="text-lg text-gray-500 dark:text-gray-400">Loading your financial data...</p>
+                </div>
+            )
+        }
+        switch (view) {
+            case 'dashboard':
+                return <DashboardScreen 
+                            transactions={transactions} 
+                            goals={goals} 
+                            onEditTransaction={handleEditTransaction} 
+                            onDeleteTransaction={handleDeleteTransaction} 
+                            onNavigateToSavings={() => setShowSavings(true)}
+                            onAddTransaction={() => setView('addTransaction')}
+                        />;
+            case 'budget':
+                return <BudgetScreen 
+                            goals={goals} 
+                            onBatchUpdateGoals={handleBatchUpdateGoals}
+                            savingsDistribution={savingsDistribution}
+                            onSaveDistribution={handleSaveDistribution}
+                        />;
+            case 'history':
+                return <HistoryScreen transactions={transactions} />;
+            default:
+                return <DashboardScreen 
+                            transactions={transactions} 
+                            goals={goals} 
+                            onEditTransaction={handleEditTransaction} 
+                            onDeleteTransaction={handleDeleteTransaction} 
+                            onNavigateToSavings={() => setShowSavings(true)} 
+                            onAddTransaction={() => setView('addTransaction')}
+                        />;
+        }
     }
-  }, [hasAccess, currentView]); 
 
-  const loadGlobalData = async () => {
-    const t = await db.getAllTransactions();
-    setTransactions(t);
-    const g = await db.getAllGoals();
-    setGoals(g);
-    const s = await db.getSavingsDistribution();
-    setSavingsDist(s);
-  };
+    if (isAuthLoading) {
+        return <div className="min-h-screen bg-gray-50 dark:bg-gray-900" />;
+    }
 
-  const handleEnterApp = () => {
-    localStorage.setItem('simpleBudgetHasAccess', 'true');
-    setHasAccess(true);
-  };
+    if (!isUnlocked) {
+        return <LandingPage onEnterApp={handleEnterApp} />;
+    }
 
-  // Si no tiene acceso, mostrar Landing Page
-  if (!hasAccess) {
-    return <LandingPage onEnterApp={handleEnterApp} />;
-  }
+    return (
+        <div className={`min-h-screen ${isDarkMode ? 'dark bg-gray-900' : 'bg-white'} text-gray-800 dark:text-gray-200`}>
+            <Header onSettingsClick={() => setView('settings')} />
+            <main className="container mx-auto p-4 pb-24">
+                {showDeletionAlert && <DeletionAlert onClose={() => setShowDeletionAlert(false)} />}
+                {renderMainView()}
+            </main>
+            
+            { (view === 'dashboard' || view === 'budget' || view === 'history') && <BottomNav currentView={view} setView={setView} /> }
 
-  return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans transition-colors duration-200">
-      
-      {/* Header fijo */}
-      <Header onSettingsClick={() => alert('Configuración próximamente')} />
-
-      {/* Contenido Principal */}
-      <main className="pt-16 pb-20 min-h-screen">
-        
-        {currentView === 'dashboard' && (
-          <DashboardScreen 
-            transactions={transactions}
-            goals={goals}
-            onEditTransaction={(t) => {}}
-            onDeleteTransaction={(id) => {}}
-            onNavigateToSavings={() => setShowSavingsModal(true)}
-            onAddClick={() => setShowAddTransaction(true)}
-          />
-        )}
-
-        {currentView === 'budget' && (
-          <BudgetScreen />
-        )}
-
-        {currentView === 'history' && (
-          <HistoryScreen transactions={transactions} />
-        )}
-
-      </main>
-
-      {/* Menú Inferior */}
-      <BottomNav currentView={currentView} setView={setCurrentView} />
-
-      {/* Modales */}
-      {showAddTransaction && (
-        <AddTransactionScreen 
-          onClose={() => setShowAddTransaction(false)}
-          onSubmit={() => {
-            setShowAddTransaction(false);
-            loadGlobalData(); 
-          }}
-        />
-      )}
-
-      {showSavingsModal && (
-        <SavingsScreen 
-          transactions={transactions}
-          savingsDistribution={savingsDist}
-          onClose={() => setShowSavingsModal(false)}
-        />
-      )}
-
-    </div>
-  );
+            {view === 'addTransaction' && (
+                <AddTransactionScreen 
+                    onClose={() => { setEditingTransaction(null); setView('dashboard'); }}
+                    onSubmit={handleAddOrUpdateTransaction}
+                    editingTransaction={editingTransaction}
+                />
+            )}
+            {view === 'settings' && <SettingsScreen onClose={() => setView('dashboard')} />}
+            {showSavings && (
+                <SavingsScreen 
+                    transactions={transactions}
+                    savingsDistribution={savingsDistribution}
+                    onClose={() => setShowSavings(false)}
+                />
+            )}
+        </div>
+    );
 };
-
-// Wrapper para proveer el contexto
-function App() {
-  return (
-    <SettingsProvider>
-      <MainApp />
-    </SettingsProvider>
-  );
-}
 
 export default App;

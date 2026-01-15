@@ -1,84 +1,48 @@
-import { Transaction, BudgetGoal, SavingsDistribution, DEFAULT_SAVINGS_DISTRIBUTION } from '../types';
+import { openDB } from 'idb';
+import { Transaction, SavingsDistribution } from '../types';
 
-const DB_NAME = 'SimpleBudgetDB';
-const DB_VERSION = 2;
-let dbPromise: Promise<IDBDatabase> | null = null;
+const DB_NAME = 'budget-db';
+const STORE_NAME = 'transactions';
 
-export const initDB = (): Promise<IDBDatabase> => {
-  if (dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onerror = () => reject("Error opening database");
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains('transactions')) {
-        const store = db.createObjectStore('transactions', { keyPath: 'id', autoIncrement: true });
-        store.createIndex('date', 'date', { unique: false });
+export const initDB = async () => {
+  return openDB(DB_NAME, 1, {
+    upgrade(db) {
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
       }
-      if (!db.objectStoreNames.contains('goals')) db.createObjectStore('goals', { keyPath: 'category' });
-      if (!db.objectStoreNames.contains('savings_distribution')) {
-        const s = db.createObjectStore('savings_distribution', { keyPath: 'goalName' });
-        DEFAULT_SAVINGS_DISTRIBUTION.forEach(i => s.add(i));
+      if (!db.objectStoreNames.contains('settings')) {
+        db.createObjectStore('settings');
       }
-    };
-    request.onsuccess = (ev) => resolve((ev.target as IDBOpenDBRequest).result);
-  });
-  return dbPromise;
-};
-
-export const addTransaction = async (t: Transaction) => {
-  const db = await initDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(['transactions'], 'readwrite');
-    const req = tx.objectStore('transactions').add(t);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    },
   });
 };
 
-export const getAllTransactions = async (): Promise<Transaction[]> => {
+export const addTransaction = async (transaction: Transaction) => {
   const db = await initDB();
-  return new Promise((resolve) => {
-    const tx = db.transaction(['transactions'], 'readonly');
-    tx.objectStore('transactions').getAll().onsuccess = (e) => resolve((e.target as IDBRequest).result);
-  });
+  return db.add(STORE_NAME, transaction);
 };
 
-export const getAllGoals = async (): Promise<BudgetGoal[]> => {
+export const getTransactions = async (): Promise<Transaction[]> => {
   const db = await initDB();
-  return new Promise((resolve) => {
-    const tx = db.transaction(['goals'], 'readonly');
-    tx.objectStore('goals').getAll().onsuccess = (e) => resolve((e.target as IDBRequest).result);
-  });
+  return db.getAll(STORE_NAME);
 };
 
-export const updateGoal = async (g: BudgetGoal) => {
+export const updateTransaction = async (transaction: Transaction) => {
   const db = await initDB();
-  const tx = db.transaction(['goals'], 'readwrite');
-  tx.objectStore('goals').put(g);
+  return db.put(STORE_NAME, transaction);
+};
+
+export const deleteTransaction = async (id: number) => {
+  const db = await initDB();
+  return db.delete(STORE_NAME, id);
+};
+
+export const saveSavingsDistribution = async (dist: SavingsDistribution[]) => {
+  const db = await initDB();
+  return db.put('settings', dist, 'savings_dist');
 };
 
 export const getSavingsDistribution = async (): Promise<SavingsDistribution[]> => {
   const db = await initDB();
-  return new Promise((resolve) => {
-    if (!db.objectStoreNames.contains('savings_distribution')) return resolve(DEFAULT_SAVINGS_DISTRIBUTION);
-    const tx = db.transaction(['savings_distribution'], 'readonly');
-    tx.objectStore('savings_distribution').getAll().onsuccess = (e) => {
-      const res = (e.target as IDBRequest).result;
-      resolve(res.length ? res : DEFAULT_SAVINGS_DISTRIBUTION);
-    };
-  });
-};
-
-export const saveSavingsDistribution = async (items: SavingsDistribution[]) => {
-  const db = await initDB();
-  const tx = db.transaction(['savings_distribution'], 'readwrite');
-  const store = tx.objectStore('savings_distribution');
-  store.clear().onsuccess = () => items.forEach(i => store.put(i));
-};
-
-export const updateTransaction = async (t: Transaction) => {
-  const db = await initDB();
-  const tx = db.transaction(['transactions'], 'readwrite');
-  tx.objectStore('transactions').put(t);
+  return (await db.get('settings', 'savings_dist')) || [];
 };

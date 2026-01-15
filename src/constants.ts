@@ -1,0 +1,2 @@
+export const BUDGET_CATEGORIES = ['Vivienda', 'Comida', 'Transporte', 'Servicios', 'Entretenimiento', 'Salud', 'Ahorro'];
+export const SAVINGS_TYPES = ['RETIRO', 'CONTINGENCIAS', 'VIVIENDA', 'TRANSPORTE', 'TECNOLOGÍA', 'VIAJES', 'INVERSIONES', 'OTROS'];
